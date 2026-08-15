@@ -26,6 +26,7 @@ export interface Kit {
   notes: string;
   log: LogEntry[];
   photo: Blob | null;
+  imageUrl: string;      // remote art, used until the blob is saved
   tint: string;
   source: string;          // where the data came from
   createdAt: string;
@@ -75,7 +76,7 @@ export function blankKit(partial: Partial<Kit> = {}): Kit {
     id: newId(),
     name: "", manufacturer: "", line: "", scale: "", kitNumber: "",
     barcode: "", variant: "unknown", status: "unbuilt", tags: [],
-    price: null, qty: 1, rating: 0, notes: "", log: [], photo: null,
+    price: null, qty: 1, rating: 0, notes: "", log: [], photo: null, imageUrl: "",
     tint: "hsl(210 20% 34%)", source: "manual",
     createdAt: now, updatedAt: now,
     ...partial,

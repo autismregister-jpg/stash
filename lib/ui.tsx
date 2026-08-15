@@ -18,6 +18,9 @@ export function useArt(photo: Blob | null | undefined) {
 
 export function artStyle(kit: Kit, url: string | null): React.CSSProperties {
   if (url) return { backgroundImage: `url(${url})` };
+  if (kit.imageUrl) {
+    return { backgroundImage: `url(/api/image?url=${encodeURIComponent(kit.imageUrl)})` };
+  }
   return { background: `linear-gradient(150deg, ${kit.tint}, rgba(0,0,0,.5))` };
 }
 

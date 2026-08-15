@@ -13,15 +13,17 @@ interface Candidate {
   line: string | null;
   scale: string | null;
   kitNumber: string | null;
+  series: string | null;
   price: number | null;
   image: string | null;
 }
 
-function toCandidate(source: string, title: string, extra: Partial<Candidate> = {}): Candidate {
-  const p = parseTitle(title);
+function toCandidate(source: string, title: string, extra: Partial<Candidate> = {}, brand?: string | null): Candidate {
+  const p = parseTitle(title, brand);
   return {
     source, title,
     name: p.name,
+    series: p.series,
     manufacturer: p.manufacturer,
     line: p.line,
     scale: p.scale,
@@ -42,10 +44,7 @@ async function upcitemdb(code: string): Promise<Candidate[]> {
     if (!r.ok) return [];
     const d = await r.json();
     return (d.items || []).slice(0, 4).map((i: any) =>
-      toCandidate("upcitemdb", i.title || "", {
-        image: i.images?.[0] ?? null,
-        manufacturer: i.brand || parseTitle(i.title || "").manufacturer,
-      })
+      toCandidate("upcitemdb", i.title || "", { image: i.images?.[0] ?? null }, i.brand)
     );
   } catch { return []; }
 }

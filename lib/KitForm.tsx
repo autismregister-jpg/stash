@@ -24,7 +24,18 @@ export default function KitForm({ initial, heading }: { initial: Kit; heading?: 
   async function save() {
     if (!k.name.trim()) { alert("Give the kit a name first."); return; }
     setSaving(true);
-    await putKit({ ...k, name: k.name.trim() });
+
+    let photo = k.photo;
+    // Keep a permanent local copy of the listing art, so the picture still
+    // works offline and does not vanish when the listing does.
+    if (!photo && k.imageUrl) {
+      try {
+        const r = await fetch(`/api/image?url=${encodeURIComponent(k.imageUrl)}`);
+        if (r.ok) photo = await r.blob();
+      } catch { /* art is optional, never block the save */ }
+    }
+
+    await putKit({ ...k, name: k.name.trim(), photo });
     router.push("/");
     router.refresh();
   }

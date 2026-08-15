@@ -75,6 +75,8 @@ export default function Scan() {
       scale: cand?.scale || "",
       kitNumber: cand?.kitNumber || "",
       price: cand?.price ?? null,
+      imageUrl: cand?.image || "",
+      notes: cand?.series ? `Series: ${cand.series}` : "",
       barcode: code,
       variant: cloneHint ? "third" : "unknown",
       source: cand?.source || "manual",
