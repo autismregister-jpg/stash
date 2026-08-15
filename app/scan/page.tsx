@@ -42,7 +42,7 @@ export default function Scan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  async function handle(raw: string) {
+  async function handle(raw: string, force = false) {
     const c = raw.trim();
     setCode(c);
     setPhase("looking");
@@ -50,9 +50,12 @@ export default function Scan() {
 
     setOwned(await findByBarcode(c));
 
-    // Already fetched on this device: never ask the internet twice.
-    const cached = await cacheGet(c);
-    if (cached) { setResult(cached); setPhase("choose"); return; }
+    // Already fetched on this device: never ask the internet twice. The cache
+    // is stamped with the parser version, so a parser fix invalidates it.
+    if (!force) {
+      const cached = await cacheGet(c);
+      if (cached) { setResult(cached); setPhase("choose"); return; }
+    }
 
     try {
       const r = await fetch(`/api/lookup?code=${encodeURIComponent(c)}`);
@@ -136,6 +139,31 @@ export default function Scan() {
             )}
           </div>
 
+          {result.sources && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ fontFamily: "var(--mono)", fontSize: 12.5,
+                                color: "var(--soft)", padding: "8px 0" }}>
+                Where this came from
+              </summary>
+              <div className="card">
+                {Object.entries(result.sources).map(([name, r]: any) => (
+                  <div key={name} style={{ padding: "5px 0" }}>
+                    <div className="rowk">
+                      <span>{name}</span>
+                      <b>{!r.configured ? "not set up" : `${r.count} found`}</b>
+                    </div>
+                    {r.note && (
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 11.5,
+                                    color: "var(--faint)", lineHeight: 1.45 }}>
+                        {r.note}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
           {owned.length > 0 && (
             <div className="card">
               <h3>You already own this</h3>
@@ -160,6 +188,9 @@ export default function Scan() {
 
           <button className="btn ghost" onClick={() => useCandidate(null)}>
             {result.candidates?.length ? "None of these, enter by hand" : "Enter the details by hand"}
+          </button>
+          <button className="btn ghost" onClick={() => handle(code, true)}>
+            Look it up again
           </button>
           <button className="btn ghost" onClick={() => { setResult(null); setPhase("camera"); }}>
             Scan a different box

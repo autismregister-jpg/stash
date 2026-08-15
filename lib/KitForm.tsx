@@ -12,7 +12,8 @@ const STATUSES: { v: Status; label: string }[] = [
   { v: "wanted", label: "Wanted" },
 ];
 
-export default function KitForm({ initial, heading }: { initial: Kit; heading?: string }) {
+export default function KitForm({ initial, heading, submitLabel = "Add to stash", onDone }:
+  { initial: Kit; heading?: string; submitLabel?: string; onDone?: (k: Kit) => void }) {
   const router = useRouter();
   const [k, setK] = useState<Kit>(initial);
   const [saving, setSaving] = useState(false);
@@ -35,7 +36,8 @@ export default function KitForm({ initial, heading }: { initial: Kit; heading?: 
       } catch { /* art is optional, never block the save */ }
     }
 
-    await putKit({ ...k, name: k.name.trim(), photo });
+    const saved = await putKit({ ...k, name: k.name.trim(), photo });
+    if (onDone) { onDone(saved); return; }
     router.push("/");
     router.refresh();
   }
@@ -55,12 +57,12 @@ export default function KitForm({ initial, heading }: { initial: Kit; heading?: 
             position: "absolute", inset: 0, display: "grid", placeItems: "center",
             color: "#fff", fontFamily: "var(--mono)", fontSize: 13, textShadow: "0 1px 3px rgba(0,0,0,.6)",
           }}>
-            Tap to photograph the box
+            Tap to add a photo of the box
           </div>
         )}
       </div>
       <input
-        ref={photoRef} type="file" accept="image/*" capture="environment"
+        ref={photoRef} type="file" accept="image/*"
         style={{ display: "none" }}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -134,7 +136,7 @@ export default function KitForm({ initial, heading }: { initial: Kit; heading?: 
       <textarea id="notes" value={k.notes} onChange={set("notes")} />
 
       <button className="btn" onClick={save} disabled={saving}>
-        {saving ? "Saving" : "Add to stash"}
+        {saving ? "Saving" : submitLabel}
       </button>
       <button className="btn ghost" onClick={() => router.back()}>Cancel</button>
     </>

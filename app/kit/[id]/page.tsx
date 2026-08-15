@@ -108,6 +108,9 @@ export default function KitPage() {
         <h2>Manage</h2>
         {k.barcode && <div className="rowk"><span>Barcode</span><b>{k.barcode}</b></div>}
         <div className="rowk"><span>Added</span><b>{new Date(k.createdAt).toLocaleDateString()}</b></div>
+        <button className="btn ghost" onClick={() => router.push(`/kit/${k.id}/edit`)}>
+          Edit the details
+        </button>
         <button className="btn danger" onClick={async () => {
           if (confirm(`Remove ${k.name} from your stash? This cannot be undone.`)) {
             await deleteKit(k.id); router.push("/");

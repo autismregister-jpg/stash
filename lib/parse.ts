@@ -47,7 +47,12 @@ const SERIES = [
   "Mobile Suit Gundam Hathaway", "Mobile Suit Gundam 00",
   "Gundam Build Metaverse", "Gundam Build Divers", "Gundam Build Fighters",
   "Gundam Breaker Battlogue", "Mobile Suit Gundam", "Gundam Thunderbolt",
-];
+  "SD Gundam G Generation-0 Gzero", "SD Gundam G Generation-0",
+  "SD Gundam G Generation", "G Generation-0 Gzero", "Ggeneration-0 Gzero",
+  "G Generation-0", "Ggeneration-0", "Gzero",
+  "SD Gundam World Heroes", "SD Gundam Sangoku", "BB Senshi Sangokuden",
+  "Gundam After War X", "After War Gundam X",
+].sort((a, b) => b.length - a.length);
 
 // Order matters: longest phrases first, or a short rule eats part of a long
 // one and strands the remainder ("Plastic Model Kit" -> "Plastic").
@@ -80,19 +85,25 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
   // 1. Maker. A known maker in the title always beats the source's brand field,
   //    because brand fields frequently hold a franchise ("Gundam") instead.
   let manufacturer = MAKERS.find((m) => new RegExp("\\b" + esc(m) + "\\b", "i").test(s)) ?? null;
-  if (!manufacturer && brandHint && !NOT_MAKERS.test(brandHint.trim())) {
-    manufacturer = brandHint.trim();
+
+  if (!manufacturer && brandHint) {
+    const hint = brandHint.trim();
+    // "BANDAI/GUNDAM WING" is a maker glued to a franchise. Take the maker.
+    const inside = MAKERS.find((m) => new RegExp("\\b" + esc(m) + "\\b", "i").test(hint));
+    if (inside) manufacturer = inside;
+    else if (!NOT_MAKERS.test(hint) && !/[\/|]/.test(hint)) manufacturer = hint;
   }
 
-  // 2. Series, removed from the name and kept separately.
-  const series = SERIES.find((f) => new RegExp(esc(f), "i").test(s)) ?? null;
-  if (series) s = s.replace(new RegExp(esc(series), "gi"), " ");
-
-  // 3. Grade, normalised to the short form.
+  // 2. Grade first, because a series name can contain the grade ("SD Gundam
+  //    G Generation") and stripping the series would take it with it.
   const lineHit = LINES.find((l) =>
     new RegExp("(^|\\s)" + esc(l) + "(\\s|$)", "i").test(s)
   );
   const line = lineHit ? (LINE_MAP[lineHit.toLowerCase()] ?? lineHit) : null;
+
+  // 3. Series, removed from the name and kept separately.
+  const series = SERIES.find((f) => new RegExp(esc(f), "i").test(s)) ?? null;
+  if (series) s = s.replace(new RegExp(esc(series), "gi"), " ");
 
   // 4. Scale, and critically: remove it from the working string BEFORE looking
   //    for a kit number, or "1/144" gets read as kit number 144.
@@ -101,7 +112,9 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
   if (scaleMatch) s = s.replace(scaleMatch[0], " ");
 
   // 5. Kit number, from what is left.
-  const numMatch = s.match(/\b(?:no\.?\s*|#)?([A-Z]{1,3}-?\d{3,7}[A-Z]?|\d{4,7})\b/);
+  const labelled = s.match(/(?:^|[\s(])(?:no\.?\s*|#\s*)(\d{1,7}[A-Z]?)\b/i);
+  const bare = s.match(/\b([A-Z]{1,3}-?\d{3,7}[A-Z]?|\d{4,7})\b/);
+  const numMatch = labelled ?? bare;
   const kitNumber = numMatch ? numMatch[1] : null;
 
   // 6. Name is whatever survives.
@@ -109,7 +122,9 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
   NOISE.forEach((r) => (name = name.replace(r, " ")));
   if (manufacturer) name = name.replace(new RegExp("\\b" + esc(manufacturer) + "\\b", "gi"), " ");
   if (lineHit) name = name.replace(new RegExp("\\b" + esc(lineHit) + "\\b", "gi"), " ");
-  if (kitNumber) name = name.replace(new RegExp("\\b" + esc(kitNumber) + "\\b", "g"), " ");
+  if (kitNumber) {
+    name = name.replace(new RegExp("(?:no\\.?\\s*|#\\s*)?\\b" + esc(kitNumber) + "\\b", "gi"), " ");
+  }
   name = tidy(name);
 
   return {

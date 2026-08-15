@@ -58,11 +58,16 @@ a{color:var(--cyanText)}
 @media(min-width:460px){.grid{grid-template-columns:repeat(3,1fr)}}
 .kit{border:1px solid var(--sprue);border-radius:var(--r);background:var(--raised);
   overflow:hidden;display:block;text-align:left;padding:0;font:inherit;
-  color:inherit;width:100%;cursor:pointer}
+  color:var(--ink);width:100%;cursor:pointer;text-decoration:none}
+.kit *{text-decoration:none}
 .art{aspect-ratio:4/5;position:relative;display:flex;align-items:flex-end;
-  padding:8px;background-size:cover;background-position:center}
+  padding:8px;background-size:cover;background-position:center;background-color:#fff}
+/* product shots are usually on white, so the caption needs its own ground */
+.art::before{content:"";position:absolute;inset:auto 0 0 0;height:42%;
+  background:linear-gradient(to top,rgba(0,0,0,.62),transparent);pointer-events:none}
 .art span{font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:#fff;
-  text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  text-transform:uppercase;position:relative;z-index:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .badge{position:absolute;top:0;right:0;font-family:var(--mono);font-size:11px;
   letter-spacing:.03em;padding:4px 7px;background:var(--ink);color:var(--styrene)}
 .badge.clone{background:var(--alert);color:#fff}
@@ -86,7 +91,8 @@ a{color:var(--cyanText)}
   text-transform:uppercase;color:var(--soft);background:none;border:0;
   padding:16px 0 10px;display:flex;gap:7px;align-items:center;cursor:pointer}
 .hero{aspect-ratio:4/3;border-radius:var(--r);border:1px solid var(--sprue);
-  position:relative;overflow:hidden;background-size:cover;background-position:center}
+  position:relative;overflow:hidden;background-size:contain;
+  background-repeat:no-repeat;background-position:center;background-color:#fff}
 .d-title{font-family:var(--display);font-size:25px;font-weight:600;
   letter-spacing:-.01em;line-height:1.15;margin:16px 0 0}
 .d-meta{font-family:var(--mono);font-size:13.5px;color:var(--soft);margin-top:8px}

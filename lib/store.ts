@@ -33,10 +33,18 @@ export interface Kit {
   updatedAt: string;
 }
 
+/**
+ * Bump this whenever lib/parse.ts changes. Cached lookups store the PARSED
+ * result, so without a version stamp a parser fix would never reach any
+ * barcode already scanned on this device.
+ */
+export const PARSE_VERSION = 4;
+
 /** Cached barcode lookups, so the same code is never fetched twice. */
 export interface CacheRow {
   code: string;
   payload: any;
+  v: number;
   at: string;
 }
 
@@ -108,11 +116,19 @@ export async function findByBarcode(code: string): Promise<Kit[]> {
 
 export async function cacheGet(code: string): Promise<any | null> {
   const row: CacheRow = await (await db()).get("lookups", code);
-  return row?.payload ?? null;
+  if (!row) return null;
+  if (row.v !== PARSE_VERSION) return null;   // stale parse, fetch it fresh
+  return row.payload;
 }
 
 export async function cachePut(code: string, payload: any) {
-  await (await db()).put("lookups", { code, payload, at: new Date().toISOString() });
+  await (await db()).put("lookups", {
+    code, payload, v: PARSE_VERSION, at: new Date().toISOString(),
+  });
+}
+
+export async function clearLookupCache() {
+  await (await db()).clear("lookups");
 }
 
 /* ── backup ──────────────────────────────────────────────────────────── */

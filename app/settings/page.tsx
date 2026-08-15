@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { exportJson, exportCsv, importJson } from "@/lib/store";
+import { exportJson, exportCsv, importJson, clearLookupCache } from "@/lib/store";
 import { download, ThemeToggle } from "@/lib/ui";
 
 export default function Settings() {
@@ -58,6 +58,19 @@ export default function Settings() {
         {msg && <div className="card">{msg}</div>}
         <div className="note" style={{ textAlign: "left" }}>
           Kits with the same id are overwritten. Everything else is added.
+        </div>
+      </section>
+
+      <section>
+        <h2>Barcode cache</h2>
+        <button className="btn ghost" onClick={async () => {
+          await clearLookupCache();
+          setMsg("Cache cleared. Barcodes will be looked up fresh.");
+        }}>
+          Clear the barcode cache
+        </button>
+        <div className="note" style={{ textAlign: "left" }}>
+          Your kits are untouched. Only the saved lookup results are dropped.
         </div>
       </section>
 

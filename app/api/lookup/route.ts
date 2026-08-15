@@ -35,18 +35,21 @@ function toCandidate(source: string, title: string, extra: Partial<Candidate> = 
 }
 
 /** Needs no account. 100 lookups a day, counted per IP. */
-async function upcitemdb(code: string): Promise<Candidate[]> {
+async function upcitemdb(code: string, rep: SourceReport): Promise<Candidate[]> {
   try {
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`, {
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
     });
-    if (!r.ok) return [];
+    if (!r.ok) { rep.note = `UPCitemdb replied ${r.status}`; return []; }
     const d = await r.json();
-    return (d.items || []).slice(0, 4).map((i: any) =>
+    const out = (d.items || []).slice(0, 4).map((i: any) =>
       toCandidate("upcitemdb", i.title || "", { image: i.images?.[0] ?? null }, i.brand)
     );
-  } catch { return []; }
+    rep.count = out.length;
+    if (!out.length) rep.note = "No record of this barcode";
+    return out;
+  } catch { rep.note = "UPCitemdb call failed"; return []; }
 }
 
 /** Free developer account, 5000 calls a day. Best coverage for third-party kits. */
@@ -73,10 +76,12 @@ async function ebayAuth(): Promise<string | null> {
   return ebayToken.value;
 }
 
-async function ebay(code: string): Promise<Candidate[]> {
+async function ebay(code: string, rep: SourceReport): Promise<Candidate[]> {
   try {
+    if (!process.env.EBAY_CLIENT_ID) { rep.note = "EBAY_CLIENT_ID not set"; return []; }
+    rep.configured = true;
     const token = await ebayAuth();
-    if (!token) return [];
+    if (!token) { rep.note = "eBay refused the credentials"; return []; }
     const r = await fetch(
       `https://api.ebay.com/buy/browse/v1/item_summary/search?gtin=${code}&limit=5`,
       {
@@ -87,35 +92,65 @@ async function ebay(code: string): Promise<Candidate[]> {
         cache: "no-store",
       }
     );
-    if (!r.ok) return [];
+    if (!r.ok) { rep.note = `eBay replied ${r.status}`; return []; }
     const d = await r.json();
-    return (d.itemSummaries || []).slice(0, 4).map((i: any) =>
+    const out = (d.itemSummaries || []).slice(0, 4).map((i: any) =>
       toCandidate("ebay", i.title || "", {
         image: i.image?.imageUrl ?? null,
         price: i.price?.value ? Number(i.price.value) : null,
       })
     );
-  } catch { return []; }
+    rep.count = out.length;
+    if (!out.length) rep.note = "No listing with this barcode";
+    return out;
+  } catch { rep.note = "eBay call failed"; return []; }
+}
+
+export interface SourceReport {
+  configured: boolean;
+  count: number;
+  note?: string;
 }
 
 /** Free application ID. Best coverage for Bandai, Tamiya, Hasegawa. */
-async function rakuten(code: string): Promise<Candidate[]> {
+async function rakuten(code: string, rep: SourceReport): Promise<Candidate[]> {
   const app = process.env.RAKUTEN_APP_ID;
-  if (!app) return [];
+  if (!app) { rep.note = "RAKUTEN_APP_ID not set on this deployment"; return []; }
+  rep.configured = true;
+
   try {
     const url =
       "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601" +
-      `?applicationId=${app}&keyword=${code}&hits=5&format=json`;
+      `?applicationId=${encodeURIComponent(app)}&keyword=${code}&hits=10&format=json`;
     const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) return [];
+
+    if (!r.ok) {
+      const body = await r.text();
+      rep.note = `Rakuten replied ${r.status}: ${body.slice(0, 160)}`;
+      return [];
+    }
+
     const d = await r.json();
-    return (d.Items || []).slice(0, 4).map((w: any) =>
-      toCandidate("rakuten", w.Item?.itemName || "", {
-        image: w.Item?.mediumImageUrls?.[0]?.imageUrl ?? null,
-        price: w.Item?.itemPrice ?? null,
-      })
-    );
-  } catch { return []; }
+    const items = d.Items || [];
+    if (!items.length) { rep.note = "Rakuten has no listing carrying this barcode"; }
+
+    const out = items.slice(0, 4).map((w: any) => {
+      const it = w.Item ?? w;
+      const image =
+        it.mediumImageUrls?.[0]?.imageUrl ??
+        it.smallImageUrls?.[0]?.imageUrl ??
+        (typeof it.mediumImageUrls?.[0] === "string" ? it.mediumImageUrls[0] : null);
+      return toCandidate("rakuten", it.itemName || "", {
+        image: image ? String(image).replace(/\?_ex=\d+x\d+$/, "") : null,
+        price: it.itemPrice ?? null,
+      });
+    });
+    rep.count = out.length;
+    return out;
+  } catch (e: any) {
+    rep.note = "Rakuten call threw: " + (e?.message || "unknown");
+    return [];
+  }
 }
 
 function dedupe(list: Candidate[]): Candidate[] {
@@ -149,7 +184,17 @@ export async function GET(req: Request) {
 
   // Every configured source at once. Rakuten first in the list because its
   // titles are the cleanest when it is available.
-  const results = await Promise.all([rakuten(code), ebay(code), upcitemdb(code)]);
+  const reports: Record<string, SourceReport> = {
+    rakuten:    { configured: false, count: 0 },
+    ebay:       { configured: false, count: 0 },
+    upcitemdb:  { configured: true,  count: 0 },
+  };
+
+  const results = await Promise.all([
+    rakuten(code, reports.rakuten),
+    ebay(code, reports.ebay),
+    upcitemdb(code, reports.upcitemdb),
+  ]);
   const candidates = dedupe(results.flat());
 
   const notes: string[] = [];
@@ -163,5 +208,6 @@ export async function GET(req: Request) {
   return NextResponse.json({
     code, valid: true, origin, candidates,
     message: notes.join(" ") || null,
+    sources: reports,
   });
 }
