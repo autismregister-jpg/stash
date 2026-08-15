@@ -125,6 +125,9 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
   if (kitNumber) {
     name = name.replace(new RegExp("(?:no\\.?\\s*|#\\s*)?\\b" + esc(kitNumber) + "\\b", "gi"), " ");
   }
+  // Retailer SKUs such as BAN155746 or TAM35209. Never part of a kit's name,
+  // and they survive when a different token won the kit-number slot.
+  name = name.replace(/\b[A-Z]{2,4}\d{5,8}\b/g, " ");
   name = tidy(name);
 
   return {

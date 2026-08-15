@@ -52,12 +52,22 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
         onClick={() => photoRef.current?.click()}
         role="button"
       >
-        {!url && (
+        {!url && !k.imageUrl ? (
           <div style={{
             position: "absolute", inset: 0, display: "grid", placeItems: "center",
-            color: "#fff", fontFamily: "var(--mono)", fontSize: 13, textShadow: "0 1px 3px rgba(0,0,0,.6)",
+            color: "#fff", fontFamily: "var(--mono)", fontSize: 13,
+            textShadow: "0 1px 3px rgba(0,0,0,.6)",
           }}>
             Tap to add a photo of the box
+          </div>
+        ) : (
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            padding: "8px 10px", textAlign: "center",
+            color: "#fff", fontFamily: "var(--mono)", fontSize: 11.5,
+            background: "linear-gradient(to top, rgba(0,0,0,.7), transparent)",
+          }}>
+            Tap to use your own photo instead
           </div>
         )}
       </div>

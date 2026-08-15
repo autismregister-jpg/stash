@@ -38,7 +38,7 @@ export interface Kit {
  * result, so without a version stamp a parser fix would never reach any
  * barcode already scanned on this device.
  */
-export const PARSE_VERSION = 4;
+export const PARSE_VERSION = 5;
 
 /** Cached barcode lookups, so the same code is never fetched twice. */
 export interface CacheRow {
