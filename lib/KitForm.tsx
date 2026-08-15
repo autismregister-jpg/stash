@@ -27,19 +27,32 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
     setSaving(true);
 
     let photo = k.photo;
-    // Keep a permanent local copy of the listing art, so the picture still
-    // works offline and does not vanish when the listing does.
+
+    // Keep a permanent local copy of the listing art so it works offline and
+    // survives the listing being removed. Strictly optional: capped at five
+    // seconds and abandoned on timeout, because the art still displays through
+    // the proxy either way. Saving must never wait on a slow image host.
     if (!photo && k.imageUrl) {
       try {
-        const r = await fetch(`/api/image?url=${encodeURIComponent(k.imageUrl)}`);
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 5000);
+        const r = await fetch(`/api/image?url=${encodeURIComponent(k.imageUrl)}`,
+                              { signal: ctl.signal });
+        clearTimeout(timer);
         if (r.ok) photo = await r.blob();
-      } catch { /* art is optional, never block the save */ }
+      } catch { /* timed out or failed: save anyway */ }
     }
 
-    const saved = await putKit({ ...k, name: k.name.trim(), photo });
-    if (onDone) { onDone(saved); return; }
-    router.push("/");
-    router.refresh();
+    try {
+      const saved = await putKit({ ...k, name: k.name.trim(), photo });
+      if (onDone) { onDone(saved); return; }
+      router.push("/");
+      router.refresh();
+    } catch (err: any) {
+      // Never leave the button dead with no explanation.
+      setSaving(false);
+      alert("Could not save this kit: " + (err?.message || "unknown error"));
+    }
   }
 
   return (
@@ -146,7 +159,7 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
       <textarea id="notes" value={k.notes} onChange={set("notes")} />
 
       <button className="btn" onClick={save} disabled={saving}>
-        {saving ? "Saving" : submitLabel}
+        {saving ? "Saving…" : submitLabel}
       </button>
       <button className="btn ghost" onClick={() => router.back()}>Cancel</button>
     </>
