@@ -83,6 +83,7 @@ export default function Scan() {
       barcode: code,
       variant: cloneHint ? "third" : "unknown",
       source: cand?.source || "manual",
+      sourceTitle: cand?.title || "",
       tint: tintFor(cand?.name || code),
     });
     setDraft(k);

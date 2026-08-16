@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { putKit, type Kit, type Status } from "./store";
-import { useArt, artStyle } from "./ui";
+import { useArt, artStyle, toStoredImage } from "./ui";
 
 const STATUSES: { v: Status; label: string }[] = [
   { v: "unbuilt", label: "Unbuilt" },
@@ -39,7 +39,7 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
         const r = await fetch(`/api/image?url=${encodeURIComponent(k.imageUrl)}`,
                               { signal: ctl.signal });
         clearTimeout(timer);
-        if (r.ok) photo = await r.blob();
+        if (r.ok) photo = await toStoredImage(await r.blob());
       } catch { /* timed out or failed: save anyway */ }
     }
 
@@ -58,6 +58,21 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
   return (
     <>
       {heading && <h2 style={{ marginTop: 20 }}>{heading}</h2>}
+
+      {k.sourceTitle && (
+        <details style={{ marginBottom: 8 }}>
+          <summary style={{ fontFamily: "var(--mono)", fontSize: 12,
+                            color: "var(--soft)", padding: "6px 0" }}>
+            What the listing actually said
+          </summary>
+          <div className="card" style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+            {k.sourceTitle}
+            <div className="rowk" style={{ marginTop: 6 }}>
+              <span>from</span><b>{k.source}</b>
+            </div>
+          </div>
+        </details>
+      )}
 
       <div
         className="hero"
@@ -87,9 +102,14 @@ export default function KitForm({ initial, heading, submitLabel = "Add to stash"
       <input
         ref={photoRef} type="file" accept="image/*"
         style={{ display: "none" }}
-        onChange={(e) => {
+        onChange={async (e) => {
           const f = e.target.files?.[0];
-          if (f) setK({ ...k, photo: f });
+          if (!f) return;
+          try {
+            setK({ ...k, photo: await toStoredImage(f) });
+          } catch {
+            alert("That image could not be read. Try a different photo.");
+          }
         }}
       />
 

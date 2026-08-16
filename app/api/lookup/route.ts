@@ -112,45 +112,140 @@ export interface SourceReport {
   note?: string;
 }
 
-/** Free application ID. Best coverage for Bandai, Tamiya, Hasegawa. */
+/**
+ * Bandai Spirits' own product database, keyed directly by JAN.
+ *
+ * Their product page URL is the barcode with three zeros appended, so a kit's
+ * page can be addressed from the barcode alone with no search step at all.
+ * This is the manufacturer's own record: correct name, grade, scale, price,
+ * release date and official box art. It beats any marketplace listing.
+ *
+ * Not an official API, so it could change without notice. It fails quietly and
+ * the other sources still run.
+ */
+async function bandai(code: string, rep: SourceReport): Promise<Candidate[]> {
+  rep.configured = true;
+  try {
+    const url = "https://www.bandaispirits.co.jp/products/search/detail.php" +
+      `?prd_id=${code}000&grp_id=5325`;
+    const r = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ja,en;q=0.8",
+      },
+    });
+    if (!r.ok) {
+      rep.note = r.status === 403
+        ? "Bandai refused the request (403), likely blocking server traffic"
+        : `Bandai replied ${r.status}`;
+      return [];
+    }
+
+    const html = await r.text();
+
+    const title =
+      html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ??
+      html.match(/<title>([^<|\u2502]+)/i)?.[1]?.trim() ?? "";
+
+    // A barcode with no product still returns a page, just without a real title.
+    if (!title || /商品検索|PRODUCTS/.test(title) && title.length < 12) {
+      rep.note = "Bandai has no product with this barcode";
+      return [];
+    }
+
+    const image = html.match(/https:\/\/bandai-a\.akamaihd\.net\/bc\/img\/model\/[^\s"')]+\.jpg/i)?.[0] ?? null;
+    const priceRaw = html.match(/([\d,]+)\s*円\(税込\)/)?.[1] ?? null;
+    const released = html.match(/(\d{4})年(\d{1,2})月(\d{1,2})?日?/)?.[0] ?? null;
+
+    rep.count = 1;
+    if (released) rep.note = `released ${released}`;
+
+    return [toCandidate("bandai", title, {
+      image,
+      price: priceRaw ? Number(priceRaw.replace(/,/g, "")) : null,
+    }, "Bandai")];
+  } catch (e: any) {
+    rep.note = "Bandai lookup failed: " + (e?.message || "unknown");
+    return [];
+  }
+}
+
+/**
+ * Rakuten, two different indexes.
+ *
+ * Ichiba searches shop listings, which only match a barcode when the merchant
+ * typed it into their listing text. Many do not, which is why a barcode that
+ * plainly exists can come back empty. The Product index is Rakuten's own
+ * catalogue and is indexed differently, so it is worth asking as well.
+ */
 async function rakuten(code: string, rep: SourceReport): Promise<Candidate[]> {
   const app = process.env.RAKUTEN_APP_ID;
   if (!app) { rep.note = "RAKUTEN_APP_ID not set on this deployment"; return []; }
   rep.configured = true;
 
+  const notes: string[] = [];
+  const out: Candidate[] = [];
+
+  // 1. Rakuten's product catalogue.
   try {
-    const url =
-      "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601" +
+    const url = "https://app.rakuten.co.jp/services/api/Product/Search/20170426" +
+      `?applicationId=${encodeURIComponent(app)}&keyword=${code}&hits=10&format=json`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (r.ok) {
+      const d = await r.json();
+      for (const w of (d.Products || []).slice(0, 3)) {
+        const it = w.Product ?? w;
+        const title = it.productName || it.itemName || "";
+        if (!title) continue;
+        out.push(toCandidate("rakuten", title, {
+          image: it.mediumImageUrl || it.smallImageUrl || null,
+          price: it.averagePrice ?? it.maxPrice ?? null,
+        }, it.makerName || it.brandName));
+      }
+      if (!out.length) notes.push("product catalogue: no match");
+    } else {
+      notes.push(`product catalogue replied ${r.status}`);
+    }
+  } catch (e: any) {
+    notes.push("product catalogue failed: " + (e?.message || "unknown"));
+  }
+
+  // 2. Shop listings.
+  try {
+    const url = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601" +
       `?applicationId=${encodeURIComponent(app)}&keyword=${code}&hits=10&format=json`;
     const r = await fetch(url, { cache: "no-store" });
 
     if (!r.ok) {
       const body = await r.text();
-      rep.note = `Rakuten replied ${r.status}: ${body.slice(0, 160)}`;
-      return [];
+      notes.push(`shop listings replied ${r.status}: ${body.slice(0, 120)}`);
+    } else {
+      const d = await r.json();
+      const items = d.Items || [];
+      if (!items.length) notes.push("shop listings: no merchant lists this barcode");
+      for (const w of items.slice(0, 3)) {
+        const it = w.Item ?? w;
+        const image =
+          it.mediumImageUrls?.[0]?.imageUrl ??
+          it.smallImageUrls?.[0]?.imageUrl ??
+          (typeof it.mediumImageUrls?.[0] === "string" ? it.mediumImageUrls[0] : null);
+        out.push(toCandidate("rakuten", it.itemName || "", {
+          image: image ? String(image).replace(/\?_ex=\d+x\d+$/, "") : null,
+          price: it.itemPrice ?? null,
+        }));
+      }
     }
-
-    const d = await r.json();
-    const items = d.Items || [];
-    if (!items.length) { rep.note = "Rakuten has no listing carrying this barcode"; }
-
-    const out = items.slice(0, 4).map((w: any) => {
-      const it = w.Item ?? w;
-      const image =
-        it.mediumImageUrls?.[0]?.imageUrl ??
-        it.smallImageUrls?.[0]?.imageUrl ??
-        (typeof it.mediumImageUrls?.[0] === "string" ? it.mediumImageUrls[0] : null);
-      return toCandidate("rakuten", it.itemName || "", {
-        image: image ? String(image).replace(/\?_ex=\d+x\d+$/, "") : null,
-        price: it.itemPrice ?? null,
-      });
-    });
-    rep.count = out.length;
-    return out;
   } catch (e: any) {
-    rep.note = "Rakuten call threw: " + (e?.message || "unknown");
-    return [];
+    notes.push("shop listings failed: " + (e?.message || "unknown"));
   }
+
+  rep.count = out.length;
+  if (notes.length) rep.note = notes.join(" · ");
+  return out;
 }
 
 function dedupe(list: Candidate[]): Candidate[] {
@@ -185,12 +280,16 @@ export async function GET(req: Request) {
   // Every configured source at once. Rakuten first in the list because its
   // titles are the cleanest when it is available.
   const reports: Record<string, SourceReport> = {
+    bandai:     { configured: false, count: 0 },
     rakuten:    { configured: false, count: 0 },
     ebay:       { configured: false, count: 0 },
     upcitemdb:  { configured: true,  count: 0 },
   };
 
+  // Bandai first: it is the manufacturer's own record, so when it answers it is
+  // the most trustworthy thing available.
   const results = await Promise.all([
+    bandai(code, reports.bandai),
     rakuten(code, reports.rakuten),
     ebay(code, reports.ebay),
     upcitemdb(code, reports.upcitemdb),

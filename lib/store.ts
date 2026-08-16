@@ -25,10 +25,11 @@ export interface Kit {
   rating: number;          // 0 to 5, 0 means unrated
   notes: string;
   log: LogEntry[];
-  photo: Blob | null;
+  photo: string | null;   // data URL; Blobs cannot be stored on WebKit
   imageUrl: string;      // remote art, used until the blob is saved
   tint: string;
   source: string;          // where the data came from
+  sourceTitle: string;     // the raw listing text, so a bad parse is visible
   createdAt: string;
   updatedAt: string;
 }
@@ -38,7 +39,7 @@ export interface Kit {
  * result, so without a version stamp a parser fix would never reach any
  * barcode already scanned on this device.
  */
-export const PARSE_VERSION = 5;
+export const PARSE_VERSION = 6;
 
 /** Cached barcode lookups, so the same code is never fetched twice. */
 export interface CacheRow {
@@ -85,7 +86,7 @@ export function blankKit(partial: Partial<Kit> = {}): Kit {
     name: "", manufacturer: "", line: "", scale: "", kitNumber: "",
     barcode: "", variant: "unknown", status: "unbuilt", tags: [],
     price: null, qty: 1, rating: 0, notes: "", log: [], photo: null, imageUrl: "",
-    tint: "hsl(210 20% 34%)", source: "manual",
+    tint: "hsl(210 20% 34%)", source: "manual", sourceTitle: "",
     createdAt: now, updatedAt: now,
     ...partial,
   };
@@ -133,24 +134,12 @@ export async function clearLookupCache() {
 
 /* ── backup ──────────────────────────────────────────────────────────── */
 
-async function blobToDataUrl(b: Blob): Promise<string> {
-  return new Promise((res) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result as string);
-    r.readAsDataURL(b);
-  });
-}
-
-async function dataUrlToBlob(u: string): Promise<Blob> {
-  return (await fetch(u)).blob();
-}
-
 export async function exportJson(): Promise<string> {
   const kits = await allKits();
-  const out = await Promise.all(
-    kits.map(async (k) => ({ ...k, photo: k.photo ? await blobToDataUrl(k.photo) : null }))
+  return JSON.stringify(
+    { app: "stash", version: 2, exportedAt: new Date().toISOString(), kits },
+    null, 2
   );
-  return JSON.stringify({ app: "stash", version: 1, exportedAt: new Date().toISOString(), kits: out }, null, 2);
 }
 
 export async function importJson(text: string): Promise<number> {
@@ -159,11 +148,7 @@ export async function importJson(text: string): Promise<number> {
   let n = 0;
   for (const raw of data.kits) {
     const k: Kit = { ...blankKit(), ...raw };
-    if (typeof raw.photo === "string" && raw.photo.startsWith("data:")) {
-      k.photo = await dataUrlToBlob(raw.photo);
-    } else {
-      k.photo = null;
-    }
+    k.photo = typeof raw.photo === "string" && raw.photo.startsWith("data:") ? raw.photo : null;
     await (await db()).put("kits", k);
     n++;
   }

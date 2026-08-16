@@ -4,16 +4,48 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Kit } from "./store";
 
-/** Photo if we have one, otherwise a stable tint derived from the name. */
-export function useArt(photo: Blob | null | undefined) {
+/**
+ * Photos are stored as data URLs, not Blobs: WebKit refuses to put a Blob into
+ * IndexedDB ("Error preparing Blob/File data to be stored in object store").
+ * Blobs are still accepted here so that older records keep working.
+ */
+export function useArt(photo: string | Blob | null | undefined) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!photo) { setUrl(null); return; }
+    if (typeof photo === "string") { setUrl(photo); return; }
     const u = URL.createObjectURL(photo);
     setUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [photo]);
   return url;
+}
+
+/**
+ * Turn a picked file or a downloaded image into a compact JPEG data URL.
+ * Downscaled because a phone photo is several megabytes and every device has a
+ * storage quota that a few dozen of them would exhaust.
+ */
+export async function toStoredImage(src: Blob, max = 1200, quality = 0.82): Promise<string> {
+  try {
+    const bitmap = await createImageBitmap(src);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    // Older engines, or an image the canvas will not take. Store it as is.
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result as string);
+      r.onerror = () => rej(new Error("Could not read that image."));
+      r.readAsDataURL(src);
+    });
+  }
 }
 
 export function artStyle(kit: Kit, url: string | null): React.CSSProperties {

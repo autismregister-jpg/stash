@@ -8,6 +8,7 @@
 
 export interface Parsed {
   name: string;
+  scaleConflict: boolean;   // the grade and the printed scale disagreed
   series: string | null;
   manufacturer: string | null;
   line: string | null;
@@ -38,6 +39,18 @@ const LINES = [
 ];
 
 /** Series names. Useful to keep, but not part of the kit's own name. */
+/**
+ * Some Bandai grades are locked to one scale, always. Where that holds, the
+ * grade is more trustworthy than a scale scraped out of a listing title,
+ * because seller listings often mention several products and the fields get
+ * mixed. HG is deliberately absent: it has had 1/144, 1/100 and 1/60 kits.
+ */
+const SCALE_BY_LINE: Record<string, string> = {
+  MG: "1/100", MGEX: "1/100", "RE/100": "1/100",
+  PG: "1/60",
+  RG: "1/144",
+};
+
 const SERIES = [
   "Mobile Suit Gundam: The Witch from Mercury", "The Witch from Mercury",
   "Mobile Suit Gundam: Iron-Blooded Orphans", "Iron-Blooded Orphans",
@@ -108,8 +121,15 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
   // 4. Scale, and critically: remove it from the working string BEFORE looking
   //    for a kit number, or "1/144" gets read as kit number 144.
   const scaleMatch = s.match(/\b1\s*[\/:]\s*(\d{1,4})\s*(?:th)?\b/);
-  const scale = scaleMatch ? "1/" + scaleMatch[1] : null;
+  let scale = scaleMatch ? "1/" + scaleMatch[1] : null;
   if (scaleMatch) s = s.replace(scaleMatch[0], " ");
+
+  // The grade wins when it implies a fixed scale, and the disagreement is
+  // reported rather than hidden: it usually means the listing covers more
+  // than one product, so the other fields deserve a second look too.
+  const implied = line ? SCALE_BY_LINE[line] : undefined;
+  const scaleConflict = Boolean(implied && scale && scale !== implied);
+  if (implied) scale = implied;
 
   // 5. Kit number, from what is left.
   const labelled = s.match(/(?:^|[\s(])(?:no\.?\s*|#\s*)(\d{1,7}[A-Z]?)\b/i);
@@ -132,6 +152,7 @@ export function parseTitle(raw: string, brandHint?: string | null): Parsed {
 
   return {
     name: name || tidy(raw),
+    scaleConflict,
     series,
     manufacturer,
     line,
